@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Region {
+  id           String   @id @default(cuid())
+  sidoCode     String   @map("sido_code")
+  sigunguCode  String   @map("sigungu_code")
+  dongCode     String   @map("dong_code")
+  sidoName     String   @map("sido_name")
+  sigunguName  String   @map("sigungu_name")
+  dongName     String   @map("dong_name")
+  lawdCd       String   @unique @map("lawd_cd")
+  lat          Float?
+  lng          Float?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  transactions     RealTransaction[]
+  listings         Listing[]
+  reports          Report[]
+  newConstructions NewConstruction[]
+
+  @@index([sigunguCode])
+  @@index([dongName])
+  @@map("regions")
+}
+
+model RealTransaction {
+  id             String       @id @default(cuid())
+  regionId       String       @map("region_id")
+  buildingName   String       @map("building_name")
+  dealDate       DateTime     @map("deal_date")
+  dealAmount     Int          @map("deal_amount")
+  exclusiveArea  Float        @map("exclusive_area")
+  pricePerPyeong Int          @map("price_per_pyeong")
+  floor          Int
+  buildYear      Int          @map("build_year")
+  propertyType   PropertyType @map("property_type")
+  jibunAddress   String?      @map("jibun_address")
+  roadAddress    String?      @map("road_address")
+  lat            Float?
+  lng            Float?
+  rawData        Json?        @map("raw_data")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@index([regionId, dealDate(sort: Desc)])
+  @@index([regionId, propertyType, dealDate(sort: Desc)])
+  @@index([buildingName, dealDate(sort: Desc)])
+  @@map("real_transactions")
+}
+
+model Listing {
+  id             String        @id @default(cuid())
+  regionId       String        @map("region_id")
+  source         ListingSource
+  buildingName   String        @map("building_name")
+  askingPrice    Int           @map("asking_price")
+  exclusiveArea  Float         @map("exclusive_area")
+  pricePerPyeong Int           @map("price_per_pyeong")
+  floor          Int
+  rooms          Int?
+  bathrooms      Int?
+  maintenanceFee Int?          @map("maintenance_fee")
+  propertyType   PropertyType  @map("property_type")
+  listingUrl     String?       @map("listing_url")
+  lat            Float?
+  lng            Float?
+  fetchedAt      DateTime      @default(now()) @map("fetched_at")
+  isActive       Boolean       @default(true) @map("is_active")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@index([regionId, isActive, fetchedAt(sort: Desc)])
+  @@map("listings")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  employeeId  String    @unique @map("employee_id")
+  name        String
+  department  String?
+  email       String    @unique
+  role        UserRole  @default(STAFF)
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  reports Report[]
+
+  @@map("users")
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  regionId     String   @map("region_id")
+  buildingName String?  @map("building_name")
+  reportType   String   @default("valuation") @map("report_type")
+  pdfUrl       String?  @map("pdf_url")
+  parameters   Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@map("reports")
+}
+
+model NewConstruction {
+  id             String    @id @default(cuid())
+  buildingName   String    @map("building_name")
+  regionId       String    @map("region_id")
+  totalUnits     Int       @map("total_units")
+  occupiedUnits  Int       @map("occupied_units")
+  saleRate       Float     @map("sale_rate")
+  completionDate DateTime? @map("completion_date")
+  dataSource     String?   @map("data_source")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  region Region @relation(fields: [regionId], references: [id])
+
+  @@map("new_constructions")
+}
+
+enum PropertyType {
+  villa
+  officetel
+}
+
+enum ListingSource {
+  naver
+  dabang
+  zigbang
+}
+
+enum UserRole {
+  STAFF
+  MANAGER
+  ADMIN
+}
