@@ -9,6 +9,7 @@ import { ListingsModule } from './listings/listings.module';
 import { ReportsModule } from './reports/reports.module';
 import { ConstructionsModule } from './constructions/constructions.module';
 import { MolitModule } from './molit/molit.module';
+import { CollectorModule } from './collector/collector.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { MolitModule } from './molit/molit.module';
     ReportsModule,
     ConstructionsModule,
     MolitModule,
+    CollectorModule,
   ],
   controllers: [AppController],
   providers: [AppService],

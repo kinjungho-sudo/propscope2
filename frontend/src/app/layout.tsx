@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -11,9 +12,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const kakaoKey = process.env.NEXT_PUBLIC_KAKAO_MAP_KEY
   return (
     <html lang="ko">
       <body>
+        {kakaoKey && (
+          <Script
+            src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`}
+            strategy="afterInteractive"
+          />
+        )}
         <div className="min-h-screen bg-gray-50">
           {children}
         </div>

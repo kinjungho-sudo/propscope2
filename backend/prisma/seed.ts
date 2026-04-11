@@ -1,6 +1,9 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 // 법정동 코드 형식: 시도(2) + 시군구(3) + 읍면동(3) + 리(2) = 10자리
 // sigunguCode = 5자리 (MOLIT LAWD_CD로 사용)

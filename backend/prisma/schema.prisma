@@ -49,6 +49,7 @@ model RealTransaction {
 
   region Region @relation(fields: [regionId], references: [id])
 
+  @@unique([regionId, buildingName, dealDate, dealAmount, floor], name: "regionId_buildingName_dealDate_dealAmount_floor")
   @@index([regionId, dealDate(sort: Desc)])
   @@index([regionId, propertyType, dealDate(sort: Desc)])
   @@index([buildingName, dealDate(sort: Desc)])

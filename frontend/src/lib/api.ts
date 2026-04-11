@@ -6,6 +6,12 @@ const api = axios.create({
   timeout: 10000,
 })
 
+// 데이터 수집은 오래 걸리므로 별도 타임아웃 120초
+const collectorAxios = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1',
+  timeout: 120000,
+})
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -30,6 +36,11 @@ export const transactionsApi = {
     api.get<ApiResponse<TrendData[]>>(`/transactions/trend`, { params: { regionId, months, propertyType } }),
   analysis: (regionId: string, propertyType?: string) =>
     api.get<ApiResponse<Record<string, unknown>>>(`/transactions/analysis`, { params: { regionId, propertyType } }),
+}
+
+export const collectorApi = {
+  collectRecent: (lawdCd: string, months = 6) =>
+    collectorAxios.post<ApiResponse<{ total: number; months: string[] }>>(`/collector/collect-recent`, { lawdCd, months }),
 }
 
 export const listingsApi = {
