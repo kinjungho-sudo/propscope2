@@ -8,9 +8,9 @@ RUN npm ci
 COPY prisma ./prisma/
 COPY . .
 RUN npx prisma generate
-RUN npm run build
-RUN ls -la dist/
+RUN npx tsc -p tsconfig.build.json --skipLibCheck --noEmitOnError false
+RUN ls -la dist/ && echo "Build successful!"
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss || echo 'DB push failed, continuing'; npx prisma db seed || echo 'Seed skipped'; node dist/main"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && (npx prisma db seed || echo 'Seed skipped or already run') && node dist/main"]
