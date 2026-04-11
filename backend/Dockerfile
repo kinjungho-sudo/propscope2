@@ -1,15 +1,10 @@
 FROM node:20-alpine
-
 WORKDIR /app
-
 COPY package*.json ./
 RUN npm ci
-
 COPY prisma ./prisma/
 COPY . .
 RUN npx prisma generate
 RUN npm run build
-
 EXPOSE 10000
-
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && (npx prisma db seed || echo 'Seed skipped or already run') && node dist/main"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && (npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts || echo 'Seed skipped or already run') && node dist/main"]
