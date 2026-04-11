@@ -8,8 +8,7 @@ RUN npm ci
 COPY prisma ./prisma/
 COPY . .
 RUN npx prisma generate
-RUN npx tsc -p tsconfig.build.json --skipLibCheck --noEmitOnError false
-RUN ls -la dist/ && echo "Build successful!"
+RUN npm run build
 
 EXPOSE 10000
 
