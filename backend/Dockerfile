@@ -13,4 +13,4 @@ RUN ls -la dist/
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && (npx prisma db seed || echo 'Seed skipped or already run') && node dist/main"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss || echo 'DB push failed, continuing'; npx prisma db seed || echo 'Seed skipped'; node dist/main"]
