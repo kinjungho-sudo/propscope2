@@ -8,7 +8,7 @@ RUN npm ci
 COPY prisma ./prisma/
 COPY . .
 RUN npx prisma generate
-RUN npm run build
+RUN npm run build && ls -la dist/ && echo "=== BUILD SUCCEEDED ===" || (echo "=== BUILD FAILED ===" && exit 1)
 
 EXPOSE 10000
 
