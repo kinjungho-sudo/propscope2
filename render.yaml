@@ -1,11 +1,10 @@
 services:
   - type: web
     name: propscope-backend
-    env: docker
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
     plan: free
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    healthCheckPath: /api/v1/health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -15,10 +14,16 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: API_PREFIX
+        value: api/v1
       - key: MOLIT_API_KEY
         sync: false
       - key: KAKAO_REST_API_KEY
-        sync: false
+        value: 882a712230678852cb0e6c255561ea08
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
 
 databases:
   - name: propscope-db
