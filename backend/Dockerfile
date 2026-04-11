@@ -11,4 +11,4 @@ RUN npm run build
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "npx prisma db push && npx prisma db seed && node dist/main"]
+CMD ["sh", "-c", "npx prisma db push && (npx prisma db seed || echo 'Seed skipped or already run') && node dist/main"]
