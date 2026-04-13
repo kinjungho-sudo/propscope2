@@ -3,19 +3,21 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import * as xml2js from 'xml2js';
 
-const MOLIT_BASE_URL = 'http://apis.data.go.kr/1613000';
+const MOLIT_BASE_URL = 'https://apis.data.go.kr/1613000';
 
+// 빌라/오피스텔 모두 영문 필드 반환 (건물명만 다름: mhouseNm vs offiNm)
 export interface MolitTransactionRaw {
-  건물명?: string;
-  년?: string;
-  월?: string;
-  일?: string;
-  거래금액?: string;
-  전용면적?: string;
-  층?: string;
-  건축년도?: string;
-  법정동?: string;
-  지번?: string;
+  mhouseNm?: string;   // 빌라 건물명
+  offiNm?: string;     // 오피스텔 건물명
+  dealYear?: string;
+  dealMonth?: string;
+  dealDay?: string;
+  dealAmount?: string;
+  excluUseAr?: string; // 전용면적
+  floor?: string;
+  buildYear?: string;
+  umdNm?: string;      // 법정동
+  jibun?: string;
 }
 
 @Injectable()
@@ -28,11 +30,11 @@ export class MolitService {
   }
 
   async fetchVillaTransactions(lawdCd: string, dealYmd: string): Promise<MolitTransactionRaw[]> {
-    return this.fetchFromMolit('RHTrade/getRTMSDataSvcRHTrade', lawdCd, dealYmd);
+    return this.fetchFromMolit('RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade', lawdCd, dealYmd);
   }
 
   async fetchOfficetelTransactions(lawdCd: string, dealYmd: string): Promise<MolitTransactionRaw[]> {
-    return this.fetchFromMolit('OffiTrade/getRTMSDataSvcOffiTrade', lawdCd, dealYmd);
+    return this.fetchFromMolit('RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade', lawdCd, dealYmd);
   }
 
   private async fetchFromMolit(
@@ -42,14 +44,18 @@ export class MolitService {
   ): Promise<MolitTransactionRaw[]> {
     try {
       // serviceKey를 params로 넘기면 axios가 이중 인코딩함 → 직접 쿼리스트링에 붙임
+      // encodeURIComponent: 디코딩된 원본 키의 +/= 등 특수문자를 안전하게 처리
       const qs = new URLSearchParams({
         LAWD_CD: lawdCd,
         DEAL_YMD: dealYmd,
         numOfRows: '1000',
         pageNo: '1',
       }).toString();
-      const url = `${MOLIT_BASE_URL}/${endpoint}?serviceKey=${this.apiKey}&${qs}`;
-      const response = await axios.get<string>(url, { timeout: 10000 });
+      const url = `${MOLIT_BASE_URL}/${endpoint}?serviceKey=${encodeURIComponent(this.apiKey)}&${qs}`;
+      const response = await axios.get<string>(url, {
+        timeout: 10000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
 
       const parsed = await xml2js.parseStringPromise(response.data, { explicitArray: false });
       const items = parsed?.response?.body?.items?.item;

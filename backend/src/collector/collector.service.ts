@@ -37,19 +37,22 @@ export class CollectorService {
     const saveItems = async (items: typeof villaRaw, type: PropertyType) => {
       for (const item of items) {
         try {
-          const dealAmount = this.molit.parseDealAmount(item.거래금액 || '0');
-          const exclusiveArea = parseFloat(item.전용면적 || '0');
+          // 빌라(mhouseNm) / 오피스텔(offiNm) — 두 API 모두 영문 필드
+          const buildingName = item.mhouseNm || item.offiNm || '건물명 없음';
+          const dealAmount = this.molit.parseDealAmount(item.dealAmount || '0');
+          const exclusiveArea = parseFloat(item.excluUseAr || '0');
           const pricePerPyeong = this.molit.calcPricePerPyeong(dealAmount, exclusiveArea);
-          const floor = parseInt(item.층 || '0', 10);
-          const buildYear = parseInt(item.건축년도 || '0', 10);
+          const floor = parseInt(item.floor || '0', 10);
+          const buildYear = parseInt(item.buildYear || '0', 10);
+          const dongName = (item.umdNm || '').trim();
+          const jibunStr = item.jibun || '';
 
-          const year = item.년 || dealYmd.slice(0, 4);
-          const month = (item.월 || dealYmd.slice(4, 6)).toString().padStart(2, '0');
-          const day = (item.일 || '1').toString().padStart(2, '0');
+          const year = item.dealYear || dealYmd.slice(0, 4);
+          const month = (item.dealMonth || dealYmd.slice(4, 6)).toString().padStart(2, '0');
+          const day = (item.dealDay || '1').toString().padStart(2, '0');
           const dealDate = new Date(`${year}-${month}-${day}`);
 
           // 동 이름으로 정확한 region 매핑 시도
-          const dongName = item.법정동?.trim();
           let targetRegion = region;
           if (dongName && dongName !== region.dongName) {
             const matched = await this.prisma.region.findFirst({
@@ -61,18 +64,17 @@ export class CollectorService {
           const jibunAddress = [
             targetRegion.sidoName,
             targetRegion.sigunguName,
-            item.법정동,
-            item.지번,
+            dongName || targetRegion.dongName,
+            jibunStr,
           ]
             .filter(Boolean)
             .join(' ');
 
-          // upsert: 같은 건물명+거래일+금액+층은 중복 저장 방지
           await this.prisma.realTransaction.upsert({
             where: {
               regionId_buildingName_dealDate_dealAmount_floor: {
                 regionId: targetRegion.id,
-                buildingName: item.건물명 || '건물명 없음',
+                buildingName,
                 dealDate,
                 dealAmount,
                 floor,
@@ -81,7 +83,7 @@ export class CollectorService {
             update: {},
             create: {
               regionId: targetRegion.id,
-              buildingName: item.건물명 || '건물명 없음',
+              buildingName,
               dealDate,
               dealAmount,
               exclusiveArea,
