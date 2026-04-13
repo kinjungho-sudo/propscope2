@@ -20,7 +20,7 @@ services:
       - key: MOLIT_API_KEY
         sync: false
       - key: KAKAO_REST_API_KEY
-        value: 882a712230678852cb0e6c255561ea08
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
