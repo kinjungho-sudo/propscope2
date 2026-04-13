@@ -52,13 +52,26 @@ export class MolitService {
         pageNo: '1',
       }).toString();
       const url = `${MOLIT_BASE_URL}/${endpoint}?serviceKey=${encodeURIComponent(this.apiKey)}&${qs}`;
-      const response = await axios.get<string>(url, {
+      const response = await axios.get<any>(url, {
         timeout: 10000,
         headers: { 'User-Agent': 'Mozilla/5.0' },
       });
 
-      const parsed = await xml2js.parseStringPromise(response.data, { explicitArray: false });
-      const items = parsed?.response?.body?.items?.item;
+      // API가 JSON 또는 XML 반환 — JSON 우선 처리
+      const data: any = response.data;
+      let items: any;
+      if (data && typeof data === 'object') {
+        // axios가 이미 JSON으로 파싱한 경우
+        items = data?.response?.body?.items?.item;
+      } else if (typeof data === 'string' && data.trimStart().startsWith('{')) {
+        // 문자열 JSON인 경우
+        const parsed = JSON.parse(data);
+        items = parsed?.response?.body?.items?.item;
+      } else {
+        // XML인 경우
+        const parsed = await xml2js.parseStringPromise(data, { explicitArray: false });
+        items = parsed?.response?.body?.items?.item;
+      }
       if (!items) return [];
       return Array.isArray(items) ? items : [items];
     } catch (error) {
