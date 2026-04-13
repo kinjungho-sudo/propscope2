@@ -41,17 +41,15 @@ export class MolitService {
     dealYmd: string,
   ): Promise<MolitTransactionRaw[]> {
     try {
-      const url = `${MOLIT_BASE_URL}/${endpoint}`;
-      const response = await axios.get<string>(url, {
-        params: {
-          serviceKey: this.apiKey,
-          LAWD_CD: lawdCd,
-          DEAL_YMD: dealYmd,
-          numOfRows: 1000,
-          pageNo: 1,
-        },
-        timeout: 10000,
-      });
+      // serviceKey를 params로 넘기면 axios가 이중 인코딩함 → 직접 쿼리스트링에 붙임
+      const qs = new URLSearchParams({
+        LAWD_CD: lawdCd,
+        DEAL_YMD: dealYmd,
+        numOfRows: '1000',
+        pageNo: '1',
+      }).toString();
+      const url = `${MOLIT_BASE_URL}/${endpoint}?serviceKey=${this.apiKey}&${qs}`;
+      const response = await axios.get<string>(url, { timeout: 10000 });
 
       const parsed = await xml2js.parseStringPromise(response.data, { explicitArray: false });
       const items = parsed?.response?.body?.items?.item;
