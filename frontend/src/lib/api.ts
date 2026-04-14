@@ -3,7 +3,7 @@ import { ApiResponse, Region, Transaction, TransactionStats, TrendData, Listing,
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1',
-  timeout: 10000,
+  timeout: 60000,
 })
 
 // 데이터 수집은 오래 걸리므로 별도 타임아웃 120초

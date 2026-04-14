@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
+import BackendWarmup from '@/components/BackendWarmup'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({
             strategy="afterInteractive"
           />
         )}
+        <BackendWarmup />
         <div className="min-h-screen bg-gray-50">
           {children}
         </div>
