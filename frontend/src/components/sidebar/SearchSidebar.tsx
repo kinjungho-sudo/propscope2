@@ -67,14 +67,14 @@ export default function SearchSidebar() {
   const debounceRef = useRef<NodeJS.Timeout>()
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const [priceRange, setPriceRange] = useState<[number, number]>([
-    filters.minPrice ?? 0, filters.maxPrice ?? 200000,
-  ])
-  const [areaRange, setAreaRange] = useState<[number, number]>([
-    filters.minArea ?? 0, filters.maxArea ?? 200,
-  ])
+  // 두 타입 독립 선택 (둘 다 선택 or 둘 다 미선택 = 전체)
+  const [villaOn, setVillaOn] = useState(filters.propertyType === 'villa' || filters.propertyType === 'all')
+  const [officetelOn, setOfficetelOn] = useState(filters.propertyType === 'officetel' || filters.propertyType === 'all')
+
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 200000])
+  const [areaRange, setAreaRange] = useState<[number, number]>([0, 200])
   const [buildYearRange, setBuildYearRange] = useState<[number, number]>([
-    filters.minBuildYear ?? 1970, filters.maxBuildYear ?? new Date().getFullYear(),
+    1970, new Date().getFullYear(),
   ])
 
   const handleInputChange = (value: string) => {
@@ -100,7 +100,13 @@ export default function SearchSidebar() {
   }
 
   const handleSearch = () => {
+    // 주거 분류: 둘 다 선택/미선택 = all, 하나만 = 해당 타입
+    let propertyType: 'all' | 'villa' | 'officetel' = 'all'
+    if (villaOn && !officetelOn) propertyType = 'villa'
+    else if (!villaOn && officetelOn) propertyType = 'officetel'
+
     setFilters({
+      propertyType,
       minPrice: priceRange[0] > 0 ? priceRange[0] : undefined,
       maxPrice: priceRange[1] < 200000 ? priceRange[1] : undefined,
       minArea: areaRange[0] > 0 ? areaRange[0] : undefined,
@@ -176,20 +182,30 @@ export default function SearchSidebar() {
 
         {/* Property Type */}
         <div>
-          <label className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-2 block">주거 분류</label>
+          <label className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-2 block">
+            주거 분류 <span className="text-slate-600 normal-case">(미선택 = 전체)</span>
+          </label>
           <div className="grid grid-cols-2 gap-2">
-            {(['villa', 'officetel'] as const).map(type => (
-              <button key={type}
-                onClick={() => setFilters({ propertyType: filters.propertyType === type ? 'all' : type })}
-                className={`py-2 text-xs font-medium rounded-lg border transition-all ${
-                  filters.propertyType === type
-                    ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500'
-                }`}>
-                {type === 'villa' ? '빌라 다세대' : '주거 오피스텔'}
-              </button>
-            ))}
+            <button
+              onClick={() => setVillaOn(v => !v)}
+              className={`py-2 text-xs font-medium rounded-lg border transition-all ${
+                villaOn ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500'
+              }`}>
+              빌라 다세대
+            </button>
+            <button
+              onClick={() => setOfficetelOn(v => !v)}
+              className={`py-2 text-xs font-medium rounded-lg border transition-all ${
+                officetelOn ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500'
+              }`}>
+              주거 오피스텔
+            </button>
           </div>
+          {(villaOn || officetelOn) && (
+            <p className="text-[10px] text-slate-500 mt-1">
+              {villaOn && officetelOn ? '빌라 + 오피스텔 전체' : villaOn ? '빌라(다세대)만' : '주거 오피스텔만'}
+            </p>
+          )}
         </div>
 
         {/* Price Range */}
