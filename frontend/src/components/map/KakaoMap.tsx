@@ -11,19 +11,18 @@ interface KakaoMapProps {
   region: Region | null
   transactions: Transaction[]
   hoveredTransactionId: string | null
-  onTransactionClick?: (tx: Transaction) => void
+  onBubbleClick?: (transactions: Transaction[]) => void
 }
 
-interface MarkerEntry {
-  marker: any
-  overlay: any       // detail overlay (click)
-  labelOverlay?: any // price label (always visible)
+interface BubbleEntry {
+  overlay: any
+  transactions: Transaction[]
 }
 
-export default function KakaoMap({ region, transactions, hoveredTransactionId, onTransactionClick }: KakaoMapProps) {
+export default function KakaoMap({ region, transactions, hoveredTransactionId, onBubbleClick }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const markersRef = useRef<Map<string, MarkerEntry>>(new Map())
+  const bubblesRef = useRef<Map<string, BubbleEntry>>(new Map())
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   // Initialize map
@@ -58,7 +57,6 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
       const id = setInterval(() => {
         if (initMap()) clearInterval(id)
       }, 300)
-      // 12초 후에도 로드 안 되면 error 처리
       const timeout = setTimeout(() => {
         clearInterval(id)
         setStatus('error')
@@ -77,102 +75,89 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
     mapRef.current.setLevel(5)
   }, [region])
 
-  // Rebuild markers when transactions change
+  // Rebuild bubble markers when transactions change
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current) return
     const w = window as any
 
-    // Clear existing markers
-    markersRef.current.forEach(({ marker, overlay, labelOverlay }) => {
-      marker.setMap(null)
+    // Clear existing bubbles
+    bubblesRef.current.forEach(({ overlay }) => {
       overlay.setMap(null)
-      labelOverlay?.setMap(null)
     })
-    markersRef.current.clear()
+    bubblesRef.current.clear()
 
-    // Only transactions with valid coordinates
+    // Filter valid coordinates
     const valid = transactions.filter(
       (t) => t.lat && t.lng && !(t.lat === 0 && t.lng === 0),
     )
 
+    // Group by building name (same building => one bubble)
+    const grouped = new Map<string, Transaction[]>()
     valid.forEach((t) => {
-      const position = new w.kakao.maps.LatLng(t.lat, t.lng)
-
-      const marker = new w.kakao.maps.Marker({ position, map: mapRef.current })
-
-      // 항상 표시되는 가격 라벨 (마커 위)
-      const labelEl = document.createElement('div')
-      labelEl.style.cssText = [
-        'background:rgba(15,23,42,0.88)',
-        'border:1px solid rgba(99,102,241,0.5)',
-        'border-radius:6px',
-        'padding:3px 7px',
-        'font-size:11px',
-        'font-weight:600',
-        'white-space:nowrap',
-        'color:#e2e8f0',
-        'transform:translateY(calc(-100% - 38px))',
-        'pointer-events:none',
-        'line-height:1.4',
-        'backdrop-filter:blur(4px)',
-      ].join(';')
-      labelEl.textContent = formatPrice(t.dealAmount)
-
-      const labelOverlay = new w.kakao.maps.CustomOverlay({
-        position,
-        content: labelEl,
-        map: mapRef.current,
-        zIndex: 2,
-      })
-
-      // 클릭 시 상세 팝업 (더 큰 정보)
-      const detailEl = document.createElement('div')
-      detailEl.style.cssText = [
-        'background:rgba(15,23,42,0.95)',
-        'border:1.5px solid rgba(59,130,246,0.6)',
-        'border-radius:10px',
-        'padding:10px 14px',
-        'font-size:12px',
-        'white-space:nowrap',
-        'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
-        'transform:translateY(calc(-100% - 38px))',
-        'pointer-events:none',
-        'line-height:1.6',
-        'color:#f1f5f9',
-      ].join(';')
-      detailEl.innerHTML = `
-        <div style="font-weight:700;color:#fff;margin-bottom:3px">${t.buildingName}</div>
-        <div style="color:#94a3b8;font-size:11px">${t.address}</div>
-        <div style="margin-top:5px;display:flex;gap:12px">
-          <div><span style="color:#60a5fa;font-weight:600">${formatPrice(t.dealAmount)}</span><span style="color:#64748b;font-size:10px;margin-left:3px">${t.floor}층</span></div>
-          <div style="color:#94a3b8;font-size:11px">${(t.exclusiveArea / 3.3058).toFixed(1)}평 · ${t.buildYear}년</div>
-        </div>
-      `
-
-      const detailOverlay = new w.kakao.maps.CustomOverlay({
-        position,
-        content: detailEl,
-        map: null,
-        zIndex: 5,
-      })
-
-      w.kakao.maps.event.addListener(marker, 'click', () => {
-        // 다른 모든 detail 닫기
-        markersRef.current.forEach(({ overlay }) => overlay.setMap(null))
-        detailOverlay.setMap(mapRef.current)
-        if (onTransactionClick) onTransactionClick(t)
-      })
-
-      markersRef.current.set(t.id, { marker, overlay: detailOverlay, labelOverlay })
+      const key = `${t.buildingName}||${t.address}`
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key)!.push(t)
     })
+
+    grouped.forEach((txs, key) => {
+      // Sort by date desc, take the most recent for display
+      const sorted = [...txs].sort((a, b) => b.dealDate.localeCompare(a.dealDate))
+      const representative = sorted[0]
+
+      const position = new w.kakao.maps.LatLng(representative.lat, representative.lng)
+
+      const isOfficetel = representative.propertyType === 'officetel'
+      const bgColor = isOfficetel ? '#7c3aed' : '#f97316'
+      const priceText = formatPrice(representative.dealAmount)
+      const areaText = `${representative.exclusiveArea}㎡`
+
+      const bubbleEl = document.createElement('div')
+      bubbleEl.style.cssText = [
+        `background:${bgColor}`,
+        'border-radius:20px',
+        'padding:5px 11px',
+        'color:white',
+        'font-size:12px',
+        'font-weight:700',
+        'cursor:pointer',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
+        'border:2px solid rgba(255,255,255,0.45)',
+        'white-space:nowrap',
+        'text-align:center',
+        'line-height:1.3',
+        'user-select:none',
+        'transition:transform 0.15s,box-shadow 0.15s',
+      ].join(';')
+      bubbleEl.innerHTML = `${priceText}<br><span style="font-size:10px;opacity:0.85;font-weight:500">${areaText}</span>`
+
+      bubbleEl.addEventListener('mouseenter', () => {
+        bubbleEl.style.transform = 'scale(1.08)'
+        bubbleEl.style.boxShadow = '0 4px 16px rgba(0,0,0,0.45)'
+      })
+      bubbleEl.addEventListener('mouseleave', () => {
+        bubbleEl.style.transform = 'scale(1)'
+        bubbleEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)'
+      })
+      bubbleEl.addEventListener('click', () => {
+        if (onBubbleClick) onBubbleClick(sorted)
+      })
+
+      const overlay = new w.kakao.maps.CustomOverlay({
+        position,
+        content: bubbleEl,
+        map: mapRef.current,
+        zIndex: 3,
+        yAnchor: 1.3,
+      })
+
+      bubblesRef.current.set(key, { overlay, transactions: sorted })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, status])
 
-  // Highlight marker when list item is hovered (no-op when null)
+  // hoveredTransactionId — no-op kept for interface compatibility
   useEffect(() => {
     if (status !== 'ready' || hoveredTransactionId === null) return
-    markersRef.current.forEach(({ overlay }, id) => {
-      overlay.setMap(id === hoveredTransactionId ? mapRef.current : null)
-    })
   }, [hoveredTransactionId, status])
 
   return (

@@ -1,61 +1,16 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import SearchSidebar from '@/components/sidebar/SearchSidebar'
 import KakaoMap from '@/components/map/KakaoMap'
-import TransactionTable from '@/components/transactions/TransactionTable'
+import TopBar from '@/components/layout/TopBar'
+import FilterPanel from '@/components/layout/FilterPanel'
+import LeftPanel from '@/components/layout/LeftPanel'
 import { useSearchStore } from '@/store/search'
 import { transactionsApi, collectorApi } from '@/lib/api'
-import { Transaction, TransactionStats } from '@/types'
-import { formatPrice } from '@/lib/utils'
+import { Transaction, TransactionStats, SearchFilters } from '@/types'
 
-// ─── Transaction Detail Card (map overlay) ────────────────────────────────────
-function TransactionDetail({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
-  return (
-    <div className="absolute top-3 right-3 z-50 w-64 bg-slate-900/95 backdrop-blur-sm border border-slate-600 rounded-xl shadow-2xl p-4">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="text-sm font-semibold text-white leading-tight">{tx.buildingName}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">{tx.address}</p>
-        </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 ml-2 shrink-0 text-lg leading-none">×</button>
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="bg-slate-800 rounded-lg p-2.5">
-          <p className="text-slate-500 text-[10px]">매매금액</p>
-          <p className="text-white font-bold mt-0.5">{formatPrice(tx.dealAmount)}</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-2.5">
-          <p className="text-slate-500 text-[10px]">평단가</p>
-          <p className="text-white font-bold mt-0.5">{tx.pricePerPyeong.toLocaleString()}만/평</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-2.5">
-          <p className="text-slate-500 text-[10px]">전용면적</p>
-          <p className="text-slate-200 mt-0.5">{tx.exclusiveArea}㎡ ({(tx.exclusiveArea / 3.3058).toFixed(1)}평)</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-2.5">
-          <p className="text-slate-500 text-[10px]">층 / 준공</p>
-          <p className="text-slate-200 mt-0.5">{tx.floor}층 / {tx.buildYear}년</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-2.5 col-span-2">
-          <p className="text-slate-500 text-[10px]">계약일</p>
-          <p className="text-slate-200 mt-0.5">{tx.dealDate.replace(/-/g, '.')}</p>
-        </div>
-      </div>
-      <div className="mt-2 flex justify-center">
-        <span className={`text-[10px] px-2.5 py-1 rounded-full font-medium ${
-          tx.propertyType === 'villa' ? 'bg-emerald-900/60 text-emerald-300' : 'bg-violet-900/60 text-violet-300'
-        }`}>
-          {tx.propertyType === 'villa' ? '빌라 / 다세대' : '주거 오피스텔'}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const { filters, selectedRegion, setFilters, setPage, searchVersion } = useSearchStore()
+  const { filters, selectedRegion, setFilters, setPage, setSelectedRegion, recentSearches, searchVersion } = useSearchStore()
 
   const mergedFilters = useMemo(
     () => ({ ...filters, regionId: selectedRegion?.lawdCd || filters.regionId || '' }),
@@ -72,14 +27,27 @@ export default function HomePage() {
   const [isCollecting, setIsCollecting] = useState(false)
   const [collectMsg, setCollectMsg] = useState<string | null>(null)
   const [hasCheckedEmpty, setHasCheckedEmpty] = useState(false)
-  const [showTable, setShowTable] = useState(false)
   const [sortCol, setSortCol] = useState('dealDate')
   const [isRetrying, setIsRetrying] = useState(false)
-  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null)
   const [stats, setStats] = useState<TransactionStats | null>(null)
+
+  // Layout state
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
+  const [selectedBuilding, setSelectedBuilding] = useState<{
+    name: string
+    address: string
+    transactions: Transaction[]
+  } | null>(null)
 
   const retryRef = useRef(false)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  const hasActiveFilters =
+    filters.propertyType !== 'all' ||
+    filters.minPrice !== undefined || filters.maxPrice !== undefined ||
+    filters.minArea !== undefined || filters.maxArea !== undefined ||
+    filters.minBuildYear !== undefined || filters.maxBuildYear !== undefined
 
   const fetchStats = useCallback(async (regionId: string, propType: string) => {
     if (!regionId) return
@@ -99,7 +67,6 @@ export default function HomePage() {
       setTransactions(txs)
       setTotalCount(pagination.totalCount)
       setTotalPages(pagination.totalPages)
-      setShowTable(true)
       setHasCheckedEmpty(true)
       setIsRetrying(false)
       retryRef.current = false
@@ -143,8 +110,8 @@ export default function HomePage() {
     retryRef.current = false
     setIsRetrying(false)
     setCollectMsg(null)
-    setSelectedTx(null)
     setStats(null)
+    setSelectedBuilding(null)
     fetchTransactions()
     fetchStats(mergedFilters.regionId, mergedFilters.propertyType || 'all')
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,78 +145,90 @@ export default function HomePage() {
     setFilters({ sort: apiSort as 'dealDate' | 'price' | 'pricePerPyeong' | 'area', order: newOrder })
   }
 
-  const tableVisible = (showTable || isLoading || isRetrying || !!collectMsg) && hasRegion
   const loadingMsg = isRetrying ? collectMsg : (isLoading ? '데이터 불러오는 중...' : collectMsg)
 
   return (
-    <div className="flex h-screen bg-[#0d1526] overflow-hidden">
-      <SearchSidebar stats={stats} />
+    <div className="relative h-screen overflow-hidden">
+      {/* 풀스크린 지도 */}
+      <KakaoMap
+        region={selectedRegion}
+        transactions={transactions}
+        hoveredTransactionId={null}
+        onBubbleClick={(txs) => {
+          setSelectedBuilding({
+            name: txs[0].buildingName,
+            address: txs[0].address,
+            transactions: txs,
+          })
+          setLeftPanelOpen(true)
+        }}
+      />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* 지도 */}
-          <div className={`relative min-h-0 transition-all duration-300 ${tableVisible ? 'flex-[0_0_40%]' : 'flex-1'}`}>
-            <KakaoMap
-              region={selectedRegion}
-              transactions={transactions}
-              hoveredTransactionId={null}
-              onTransactionClick={setSelectedTx}
-            />
+      {/* 상단 플로팅 바 */}
+      <TopBar
+        onRegionSelect={(region) => {
+          setSelectedRegion(region)
+          setLeftPanelOpen(true)
+          setSelectedBuilding(null)
+        }}
+        onFilterToggle={() => setFilterOpen(f => !f)}
+        filterActive={hasActiveFilters}
+        recentSearches={recentSearches}
+      />
 
-            {!hasRegion && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-slate-900/80 backdrop-blur-sm text-slate-300 text-sm px-6 py-4 rounded-xl border border-slate-700 shadow-xl">
-                  왼쪽에서 지역을 검색하세요
-                </div>
-              </div>
-            )}
+      {/* 필터 패널 */}
+      {filterOpen && (
+        <FilterPanel
+          onClose={() => setFilterOpen(false)}
+          onApply={(f: Partial<SearchFilters>) => {
+            setFilters(f)
+            setFilterOpen(false)
+          }}
+        />
+      )}
 
-            {selectedTx && (
-              <TransactionDetail tx={selectedTx} onClose={() => setSelectedTx(null)} />
-            )}
+      {/* 좌측 드로어 패널 */}
+      <LeftPanel
+        open={leftPanelOpen}
+        region={selectedRegion}
+        stats={stats}
+        selectedBuilding={selectedBuilding}
+        transactions={transactions}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        currentPage={filters.page ?? 1}
+        isLoading={isLoading || isRetrying}
+        collectMsg={loadingMsg}
+        onPageChange={(p) => setPage(p)}
+        onClose={() => {
+          setLeftPanelOpen(false)
+          setSelectedBuilding(null)
+        }}
+        onSort={handleSort}
+        sortCol={sortCol}
+        sortOrder={filters.order}
+      />
 
-            {isRetrying && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-amber-900/90 border border-amber-700 text-amber-200 text-xs px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-sm whitespace-nowrap">
-                <span className="relative flex h-1.5 w-1.5 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500" />
-                </span>
-                {collectMsg}
-              </div>
-            )}
-
-            {!showTable && !isLoading && !isRetrying && !collectMsg && hasRegion && (
-              <button
-                onClick={() => setShowTable(true)}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 border border-slate-600 text-slate-300 text-xs px-4 py-2 rounded-full shadow-lg hover:bg-slate-800 transition-colors backdrop-blur-sm"
-              >
-                실거래가 목록 보기 ({totalCount.toLocaleString()}건) ▲
-              </button>
-            )}
-          </div>
-
-          {/* 테이블 패널 */}
-          {tableVisible && (
-            <div className="flex-1 min-h-0 border-t border-slate-700 overflow-hidden">
-              <TransactionTable
-                transactions={transactions}
-                totalCount={totalCount}
-                isLoading={isLoading || isRetrying}
-                isCollecting={isCollecting}
-                collectMsg={loadingMsg}
-                currentPage={filters.page ?? 1}
-                totalPages={totalPages}
-                onPageChange={(p) => setPage(p)}
-                onClose={() => setShowTable(false)}
-                onSort={handleSort}
-                sortCol={sortCol}
-                sortOrder={filters.order}
-                onRowClick={(tx) => setSelectedTx(tx)}
-              />
-            </div>
-          )}
+      {/* 서버 재시도 토스트 */}
+      {isRetrying && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-amber-900/90 border border-amber-700 text-amber-200 text-xs px-4 py-2.5 rounded-xl shadow-2xl backdrop-blur-sm whitespace-nowrap">
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500" />
+          </span>
+          {collectMsg}
         </div>
-      </div>
+      )}
+
+      {/* 지역 미선택 안내 */}
+      {!hasRegion && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-white/90 backdrop-blur-sm text-slate-600 text-sm px-8 py-5 rounded-2xl shadow-xl border border-slate-200">
+            <p className="font-bold text-base mb-1 text-slate-800">PropScope</p>
+            <p>상단 검색창에서 지역을 검색하세요</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
