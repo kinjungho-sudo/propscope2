@@ -47,13 +47,14 @@ export class RegionsService {
       orderBy: [{ sidoName: 'asc' }, { sigunguName: 'asc' }, { dongName: 'asc' }],
     });
 
-    // 2차: 결과 부족 시 contains fallback (느리지만 포괄적)
+    // 2차: 결과 부족 시 sigunguName / sidoName / contains fallback
     if (results.length < 5) {
       results = await this.prisma.region.findMany({
         where: {
           OR: [
             { dongName: { contains: q, mode: 'insensitive' } },
             { sigunguName: { startsWith: q, mode: 'insensitive' } },
+            { sidoName: { contains: q, mode: 'insensitive' } },
           ],
         },
         take: 20,
