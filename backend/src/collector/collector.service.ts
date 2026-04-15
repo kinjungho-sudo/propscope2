@@ -127,4 +127,149 @@ export class CollectorService {
 
     return { total, months: collected };
   }
+
+  /**
+   * 인천광역시 전체 구/군 시딩 + 트랜잭션 수집
+   * MOLIT API에서 동 목록 발견 → regions 자동 생성 → real_transactions 저장
+   */
+  async seedIncheon(months = 12): Promise<{ newRegions: number; newTransactions: number; details: string[] }> {
+    const INCHEON_SIGUNGUS = [
+      { code: '28110', name: '중구' },
+      { code: '28140', name: '동구' },
+      { code: '28177', name: '미추홀구' },
+      { code: '28185', name: '연수구' },
+      { code: '28200', name: '남동구' },
+      { code: '28237', name: '부평구' },
+      { code: '28245', name: '계양구' },
+      { code: '28260', name: '서구' },
+      { code: '28710', name: '강화군' },
+      { code: '28720', name: '옹진군' },
+    ];
+
+    let newRegions = 0;
+    let newTransactions = 0;
+    const details: string[] = [];
+
+    for (const sg of INCHEON_SIGUNGUS) {
+      let sgRegions = 0;
+      let sgTx = 0;
+
+      for (let i = 0; i < months; i++) {
+        const dealYmd = format(subMonths(new Date(), i), 'yyyyMM');
+
+        const [villas, offis] = await Promise.all([
+          this.molit.fetchVillaTransactions(sg.code, dealYmd),
+          this.molit.fetchOfficetelTransactions(sg.code, dealYmd),
+        ]);
+
+        for (const [items, propType] of [
+          [villas, PropertyType.villa],
+          [offis, PropertyType.officetel],
+        ] as const) {
+          for (const item of items) {
+            const dongName = (item.umdNm || '').trim();
+            if (!dongName) continue;
+
+            // 1. region 조회 또는 생성
+            let region = await this.prisma.region.findFirst({
+              where: { sigunguCode: sg.code, dongName },
+            });
+
+            if (!region) {
+              // 사용 중인 dongCode 조회
+              const used = await this.prisma.region.findMany({
+                where: { sigunguCode: sg.code },
+                select: { dongCode: true },
+              });
+              const usedCodes = new Set(used.map((r) => r.dongCode));
+
+              // 해시 기반 고유 dongCode 생성
+              let h = 0;
+              for (const c of dongName + sg.code) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+              let dongCode = (100 + (h % 899)).toString().padStart(3, '0');
+              while (usedCodes.has(dongCode)) {
+                h = (h + 1) & 0xffff;
+                dongCode = (100 + (h % 899)).toString().padStart(3, '0');
+              }
+
+              const lawdCd = sg.code + dongCode + '00';
+              try {
+                region = await this.prisma.region.create({
+                  data: {
+                    lawdCd,
+                    sidoCode: '28',
+                    sigunguCode: sg.code,
+                    dongCode,
+                    sidoName: '인천광역시',
+                    sigunguName: sg.name,
+                    dongName,
+                  },
+                });
+                sgRegions++;
+                newRegions++;
+              } catch {
+                // 동시 생성 충돌 → 재조회
+                region = await this.prisma.region.findFirst({
+                  where: { sigunguCode: sg.code, dongName },
+                });
+                if (!region) continue;
+              }
+            }
+
+            // 2. transaction 저장
+            const dealAmount = this.molit.parseDealAmount(item.dealAmount || '0');
+            const exclusiveArea = parseFloat(item.excluUseAr || '0');
+            if (dealAmount <= 0 || exclusiveArea <= 0) continue;
+
+            const buildingName = item.mhouseNm || item.offiNm || '건물명없음';
+            const year = item.dealYear || dealYmd.slice(0, 4);
+            const month = (item.dealMonth || dealYmd.slice(4, 6)).toString().padStart(2, '0');
+            const day = (item.dealDay || '1').toString().padStart(2, '0');
+            const dealDate = new Date(`${year}-${month}-${day}`);
+            const floor = parseInt(item.floor || '1', 10);
+
+            try {
+              await this.prisma.realTransaction.upsert({
+                where: {
+                  regionId_buildingName_dealDate_dealAmount_floor: {
+                    regionId: region.id,
+                    buildingName,
+                    dealDate,
+                    dealAmount,
+                    floor,
+                  },
+                },
+                update: {},
+                create: {
+                  regionId: region.id,
+                  buildingName,
+                  dealDate,
+                  dealAmount,
+                  exclusiveArea,
+                  pricePerPyeong: this.molit.calcPricePerPyeong(dealAmount, exclusiveArea),
+                  floor,
+                  buildYear: parseInt(item.buildYear || '0', 10),
+                  propertyType: propType,
+                  jibunAddress: `인천광역시 ${sg.name} ${dongName} ${item.jibun || ''}`.trim(),
+                  roadAddress: '',
+                  rawData: item as object,
+                },
+              });
+              sgTx++;
+              newTransactions++;
+            } catch { /* upsert conflict = already exists */ }
+          }
+        }
+
+        // MOLIT API rate limit 방지
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
+      const msg = `${sg.name}: 동 ${sgRegions}개 신규, 거래 ${sgTx}건`;
+      details.push(msg);
+      this.logger.log(`[인천 시딩] ${msg}`);
+    }
+
+    return { newRegions, newTransactions, details };
+  }
 }

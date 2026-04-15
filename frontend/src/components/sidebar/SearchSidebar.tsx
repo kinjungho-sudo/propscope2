@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Search, RotateCcw, X, Clock, SlidersHorizontal, ChevronDown, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Search, RotateCcw, X, Clock, SlidersHorizontal, ChevronDown, TrendingUp, TrendingDown, Minus, DatabaseZap, Loader2 } from 'lucide-react'
 import { regionsApi } from '@/lib/api'
 import { Region, TransactionStats } from '@/types'
 import { useSearchStore } from '@/store/search'
 import { formatPrice } from '@/lib/utils'
+import axios from 'axios'
 
 function DualRangeSlider({
   min, max, step = 1,
@@ -100,6 +101,25 @@ export default function SearchSidebar({ stats }: SearchSidebarProps) {
       minBuildYear: buildYearRange[0] > 1970 ? buildYearRange[0] : undefined,
       maxBuildYear: buildYearRange[1] < new Date().getFullYear() ? buildYearRange[1] : undefined,
     })
+  }
+
+  const [isSeeding, setIsSeeding] = useState(false)
+  const [seedResult, setSeedResult] = useState<string | null>(null)
+
+  const handleSeedIncheon = async () => {
+    if (isSeeding) return
+    setIsSeeding(true)
+    setSeedResult('인천 데이터 수집 중... (약 3~5분 소요)')
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'
+      const res = await axios.post(`${apiUrl}/collector/seed-incheon`, { months: 12 }, { timeout: 600000 })
+      const { newRegions, newTransactions } = res.data.data
+      setSeedResult(`완료! 동 ${newRegions}개 추가, 거래 ${newTransactions}건 저장`)
+    } catch {
+      setSeedResult('수집 실패 — 서버 로그를 확인해주세요')
+    } finally {
+      setIsSeeding(false)
+    }
   }
 
   const formatPriceLabel = (v: number) => v >= 10000 ? `${(v / 10000).toFixed(v % 10000 === 0 ? 0 : 1)}억` : `${v.toLocaleString()}만`
@@ -341,6 +361,23 @@ export default function SearchSidebar({ stats }: SearchSidebarProps) {
           <RotateCcw className="w-3 h-3" />
           필터 초기화
         </button>
+
+        {/* 인천 데이터 수집 */}
+        <div className="pt-2 border-t border-slate-700/50">
+          <button
+            onClick={handleSeedIncheon}
+            disabled={isSeeding}
+            className="w-full py-2 text-slate-500 hover:text-slate-300 disabled:opacity-50 text-xs flex items-center justify-center gap-1.5 transition-colors"
+          >
+            {isSeeding
+              ? <><Loader2 className="w-3 h-3 animate-spin" />수집 중...</>
+              : <><DatabaseZap className="w-3 h-3" />인천 데이터 수집</>
+            }
+          </button>
+          {seedResult && (
+            <p className="text-[10px] text-center text-slate-500 mt-1 px-2">{seedResult}</p>
+          )}
+        </div>
       </div>
     </aside>
   )

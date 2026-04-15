@@ -23,6 +23,12 @@ export class CollectorController {
     return { saved: count, lawdCd: body.lawdCd, dealYmd: body.dealYmd };
   }
 
+  @Post('seed-incheon')
+  @ApiOperation({ summary: '인천광역시 전체 동 시딩 + 트랜잭션 수집 (1회성)' })
+  async seedIncheon(@Body() body: { months?: number }) {
+    return this.collector.seedIncheon(body?.months ?? 12);
+  }
+
   @Post('collect-recent')
   @ApiOperation({ summary: '특정 지역 최근 N개월 일괄 수집' })
   @ApiBody({
