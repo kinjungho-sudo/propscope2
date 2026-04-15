@@ -14,8 +14,70 @@ export class CollectorService {
   ) {}
 
   /**
+   * 구/군(sigunguCode) 내 동 레코드를 DB에서 가져오거나, 없으면 자동 생성
+   */
+  private async getOrCreateRegion(
+    sigunguCode: string,
+    sigunguName: string,
+    sidoName: string,
+    dongName: string,
+    regionCache: Map<string, { id: string; sidoName: string; sigunguName: string; dongName: string }>,
+  ) {
+    if (regionCache.has(dongName)) return regionCache.get(dongName)!;
+
+    // DB 조회
+    const existing = await this.prisma.region.findFirst({
+      where: { sigunguCode, dongName },
+    });
+    if (existing) {
+      regionCache.set(dongName, existing);
+      return existing;
+    }
+
+    // 사용 중인 dongCode 목록
+    const used = await this.prisma.region.findMany({
+      where: { sigunguCode },
+      select: { dongCode: true },
+    });
+    const usedCodes = new Set(used.map((r) => r.dongCode));
+
+    // 해시 기반 고유 dongCode 생성
+    let h = 0;
+    for (const c of dongName + sigunguCode) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+    let dongCode = (100 + (h % 899)).toString().padStart(3, '0');
+    while (usedCodes.has(dongCode)) {
+      h = (h + 1) & 0xffff;
+      dongCode = (100 + (h % 899)).toString().padStart(3, '0');
+    }
+
+    const lawdCd = sigunguCode + dongCode + '00';
+    try {
+      const created = await this.prisma.region.create({
+        data: {
+          lawdCd,
+          sidoCode: sigunguCode.slice(0, 2),
+          sigunguCode,
+          dongCode,
+          sidoName,
+          sigunguName,
+          dongName,
+        },
+      });
+      this.logger.log(`[자동생성] ${sidoName} ${sigunguName} ${dongName} (${lawdCd})`);
+      regionCache.set(dongName, created);
+      return created;
+    } catch {
+      // 동시 생성 충돌 → 재조회
+      const retry = await this.prisma.region.findFirst({ where: { sigunguCode, dongName } });
+      if (retry) { regionCache.set(dongName, retry); return retry; }
+      return null;
+    }
+  }
+
+  /**
    * 특정 지역(lawdCd)의 특정 월 실거래 데이터를 수집해 DB에 저장
-   * dealYmd: 'YYYYMM' 형식 (예: '202503')
+   * - MOLIT API는 구/군 단위로 응답 → 같은 구/군 내 모든 동을 함께 저장
+   * - DB에 없는 동은 자동으로 생성 (신규 지역 자동 시딩)
    */
   async collectByRegionAndMonth(lawdCd: string, dealYmd: string): Promise<number> {
     const region = await this.prisma.region.findUnique({ where: { lawdCd } });
@@ -24,25 +86,27 @@ export class CollectorService {
       return 0;
     }
 
-    // MOLIT LAWD_CD = 시군구 코드 (5자리)
-    const sigunguCode = region.sigunguCode;
+    const { sigunguCode, sigunguName, sidoName } = region;
 
     const [villaRaw, officetelRaw] = await Promise.all([
       this.molit.fetchVillaTransactions(sigunguCode, dealYmd),
       this.molit.fetchOfficetelTransactions(sigunguCode, dealYmd),
     ]);
 
+    // 구/군 내 region 캐시 (DB 조회 최소화)
+    const regionCache = new Map<string, { id: string; sidoName: string; sigunguName: string; dongName: string }>();
     let saved = 0;
 
     const saveItems = async (items: typeof villaRaw, type: PropertyType) => {
       for (const item of items) {
         try {
-          // 빌라(mhouseNm) / 오피스텔(offiNm) — 두 API 모두 영문 필드
           const buildingName = item.mhouseNm || item.offiNm || '건물명 없음';
           const dealAmount = this.molit.parseDealAmount(item.dealAmount || '0');
           const exclusiveArea = parseFloat(item.excluUseAr || '0');
+          if (dealAmount <= 0 || exclusiveArea <= 0) continue;
+
           const pricePerPyeong = this.molit.calcPricePerPyeong(dealAmount, exclusiveArea);
-          const floor = parseInt(item.floor || '0', 10);
+          const floor = parseInt(item.floor || '1', 10);
           const buildYear = parseInt(item.buildYear || '0', 10);
           const dongName = (item.umdNm || '').trim();
           const jibunStr = item.jibun || '';
@@ -52,23 +116,14 @@ export class CollectorService {
           const day = (item.dealDay || '1').toString().padStart(2, '0');
           const dealDate = new Date(`${year}-${month}-${day}`);
 
-          // 동 이름으로 정확한 region 매핑 시도
-          let targetRegion = region;
-          if (dongName && dongName !== region.dongName) {
-            const matched = await this.prisma.region.findFirst({
-              where: { sigunguCode, dongName: { contains: dongName } },
-            });
-            if (matched) targetRegion = matched;
-          }
+          // 동 이름으로 region 조회 or 자동 생성
+          const targetRegion = dongName
+            ? await this.getOrCreateRegion(sigunguCode, sigunguName, sidoName, dongName, regionCache)
+            : region;
+          if (!targetRegion) continue;
 
-          const jibunAddress = [
-            targetRegion.sidoName,
-            targetRegion.sigunguName,
-            dongName || targetRegion.dongName,
-            jibunStr,
-          ]
-            .filter(Boolean)
-            .join(' ');
+          const jibunAddress = [sidoName, sigunguName, dongName || region.dongName, jibunStr]
+            .filter(Boolean).join(' ');
 
           await this.prisma.realTransaction.upsert({
             where: {
