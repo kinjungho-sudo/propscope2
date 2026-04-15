@@ -1,0 +1,19 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    # Every 10 minutes (GitHub minimum is 5, but 10 is more reliable on free tier)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          echo "Pinging backend at $(date)"
+          curl -s --max-time 90 \
+            "https://propscope-backend-api.onrender.com/api/v1/health" \
+            -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" || true
+          echo "Ping complete"
