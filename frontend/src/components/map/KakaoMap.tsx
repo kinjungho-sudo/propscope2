@@ -29,40 +29,54 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const initMap = () => {
-      const w = window as any
-      if (!w.kakao?.maps || !containerRef.current) return false
+    let settled = false
 
+    const createMap = () => {
+      const w = window as any
+      if (!containerRef.current) return
       try {
-        w.kakao.maps.load(() => {
-          if (!containerRef.current) return
-          const center = new w.kakao.maps.LatLng(
-            region?.lat || 37.5665,
-            region?.lng || 126.9780,
-          )
-          mapRef.current = new w.kakao.maps.Map(containerRef.current, {
-            center,
-            level: 5,
-          })
-          setStatus('ready')
+        const center = new w.kakao.maps.LatLng(
+          region?.lat || 37.5665,
+          region?.lng || 126.9780,
+        )
+        mapRef.current = new w.kakao.maps.Map(containerRef.current, {
+          center,
+          level: 5,
         })
+        settled = true
+        setStatus('ready')
+      } catch {
+        settled = true
+        setStatus('error')
+      }
+    }
+
+    const tryInit = () => {
+      const w = window as any
+      if (!w.kakao?.maps) return false
+      try {
+        w.kakao.maps.load(createMap)
         return true
       } catch {
+        settled = true
         setStatus('error')
         return true
       }
     }
 
-    if (!initMap()) {
+    // 12초 안에 SDK 로드 안 되면 에러
+    const timeout = setTimeout(() => {
+      if (!settled) setStatus('error')
+    }, 12000)
+
+    if (!tryInit()) {
       const id = setInterval(() => {
-        if (initMap()) clearInterval(id)
+        if (tryInit()) clearInterval(id)
       }, 300)
-      const timeout = setTimeout(() => {
-        clearInterval(id)
-        setStatus('error')
-      }, 12000)
       return () => { clearInterval(id); clearTimeout(timeout) }
     }
+
+    return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -182,6 +196,12 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
             </code><br />
             도메인을 등록해주세요.
           </span>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors"
+          >
+            페이지 새로고침
+          </button>
           <span className="text-xs text-slate-600 mt-3">조회 결과 목록은 지도 없이도 정상 사용 가능합니다.</span>
         </div>
       )}
