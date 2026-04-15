@@ -58,7 +58,12 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
       const id = setInterval(() => {
         if (initMap()) clearInterval(id)
       }, 300)
-      return () => clearInterval(id)
+      // 12초 후에도 로드 안 되면 error 처리
+      const timeout = setTimeout(() => {
+        clearInterval(id)
+        setStatus('error')
+      }, 12000)
+      return () => { clearInterval(id); clearTimeout(timeout) }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -171,28 +176,28 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
   }, [hoveredTransactionId, status])
 
   return (
-    <div className="relative w-full h-full">
+    <div className="absolute inset-0">
       <div ref={containerRef} className="w-full h-full" />
 
       {status === 'loading' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50">
-          <Loader2 className="w-6 h-6 text-blue-500 animate-spin mb-2" />
-          <span className="text-sm text-gray-400">지도 로딩 중...</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1526]">
+          <Loader2 className="w-6 h-6 text-blue-400 animate-spin mb-2" />
+          <span className="text-sm text-slate-400">지도 로딩 중...</span>
         </div>
       )}
 
       {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 px-6 text-center">
-          <MapPin className="w-8 h-8 text-gray-300 mb-2" />
-          <span className="text-sm text-gray-500 font-medium">지도를 불러올 수 없습니다</span>
-          <span className="text-xs text-gray-400 mt-2 leading-relaxed">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1526] px-6 text-center">
+          <MapPin className="w-8 h-8 text-slate-600 mb-2" />
+          <span className="text-sm text-slate-400 font-medium">지도를 불러올 수 없습니다</span>
+          <span className="text-xs text-slate-500 mt-2 leading-relaxed">
             Kakao Developers 콘솔 → 플랫폼 → Web 에서<br />
-            <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+            <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
               {typeof window !== 'undefined' ? window.location.origin : ''}
             </code><br />
-            도메인을 등록하면 지도가 표시됩니다.
+            도메인을 등록해주세요.
           </span>
-          <span className="text-xs text-gray-300 mt-3">📋 지도 없이도 조회 결과 목록은 정상 사용 가능합니다.</span>
+          <span className="text-xs text-slate-600 mt-3">조회 결과 목록은 지도 없이도 정상 사용 가능합니다.</span>
         </div>
       )}
     </div>
