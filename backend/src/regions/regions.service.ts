@@ -1,26 +1,24 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+interface CachedResult {
+  data: ReturnType<RegionsService['mapRegion']>[];
+  expiresAt: number;
+}
+
 @Injectable()
 export class RegionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(q: string) {
-    if (!q || q.trim().length < 1) return [];
+  private readonly cache = new Map<string, CachedResult>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-    const results = await this.prisma.region.findMany({
-      where: {
-        OR: [
-          { dongName: { contains: q, mode: 'insensitive' } },
-          { sigunguName: { contains: q, mode: 'insensitive' } },
-          { sidoName: { contains: q, mode: 'insensitive' } },
-        ],
-      },
-      take: 20,
-      orderBy: [{ sidoName: 'asc' }, { sigunguName: 'asc' }, { dongName: 'asc' }],
-    });
-
-    return results.map((r) => ({
+  private mapRegion(r: {
+    id: string; sidoCode: string; sigunguCode: string; dongCode: string;
+    sidoName: string; sigunguName: string; dongName: string;
+    lawdCd: string; lat: number | null; lng: number | null;
+  }) {
+    return {
       id: r.id,
       sidoCode: r.sidoCode,
       sigunguCode: r.sigunguCode,
@@ -32,7 +30,40 @@ export class RegionsService {
       lat: r.lat,
       lng: r.lng,
       fullName: `${r.sidoName} ${r.sigunguName} ${r.dongName}`,
-    }));
+    };
+  }
+
+  async search(q: string) {
+    if (!q || q.trim().length < 1) return [];
+
+    const key = q.trim().toLowerCase();
+    const cached = this.cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+    // 1차: dongName prefix search (B-tree 인덱스 활용, 빠름)
+    let results = await this.prisma.region.findMany({
+      where: { dongName: { startsWith: q, mode: 'insensitive' } },
+      take: 20,
+      orderBy: [{ sidoName: 'asc' }, { sigunguName: 'asc' }, { dongName: 'asc' }],
+    });
+
+    // 2차: 결과 부족 시 contains fallback (느리지만 포괄적)
+    if (results.length < 5) {
+      results = await this.prisma.region.findMany({
+        where: {
+          OR: [
+            { dongName: { contains: q, mode: 'insensitive' } },
+            { sigunguName: { startsWith: q, mode: 'insensitive' } },
+          ],
+        },
+        take: 20,
+        orderBy: [{ sidoName: 'asc' }, { sigunguName: 'asc' }, { dongName: 'asc' }],
+      });
+    }
+
+    const data = results.map((r) => this.mapRegion(r));
+    this.cache.set(key, { data, expiresAt: Date.now() + this.CACHE_TTL });
+    return data;
   }
 
   async findOne(regionId: string) {
