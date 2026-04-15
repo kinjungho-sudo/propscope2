@@ -122,56 +122,65 @@ function SearchContent() {
 
   const loadingMsg = isRetrying ? collectMsg : (isLoading ? '데이터 불러오는 중...' : collectMsg)
 
+  const tableVisible = (showTable || isLoading || isRetrying || !!collectMsg) && !!regionCode
+
   return (
     <div className="flex h-screen bg-[#0d1526] overflow-hidden">
       <SearchSidebar />
 
-      <div className="flex-1 relative">
-        <KakaoMap region={selectedRegion} transactions={transactions} hoveredTransactionId={null} />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 지도 영역 — 테이블 표시 여부에 따라 높이 조절 */}
+        <div className={`relative flex-1 min-h-0 transition-all duration-300 ${tableVisible ? 'flex-[0_0_45%]' : ''}`}>
+          <KakaoMap region={selectedRegion} transactions={transactions} hoveredTransactionId={null} />
 
-        {!regionCode && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="bg-slate-900/80 backdrop-blur-sm text-slate-300 text-sm px-6 py-4 rounded-xl border border-slate-700 shadow-xl">
-              왼쪽에서 지역을 검색하세요
+          {!regionCode && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="bg-slate-900/80 backdrop-blur-sm text-slate-300 text-sm px-6 py-4 rounded-xl border border-slate-700 shadow-xl">
+                왼쪽에서 지역을 검색하세요
+              </div>
             </div>
+          )}
+
+          {/* 콜드 스타트 재시도 배너 */}
+          {isRetrying && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-amber-900/90 border border-amber-700 text-amber-200 text-xs px-5 py-3 rounded-xl shadow-2xl backdrop-blur-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+              </span>
+              {collectMsg}
+            </div>
+          )}
+
+          {/* 테이블 닫혔을 때 다시 열기 버튼 */}
+          {!showTable && !isLoading && !isRetrying && !collectMsg && regionCode && (
+            <button
+              onClick={() => { setShowTable(true); fetchTransactions() }}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 border border-slate-600 text-slate-300 text-xs px-4 py-2 rounded-full shadow-lg hover:bg-slate-800 transition-colors backdrop-blur-sm"
+            >
+              실거래가 목록 보기 ({totalCount.toLocaleString()}건) ▲
+            </button>
+          )}
+        </div>
+
+        {/* 테이블 영역 — 지도 아래 독립 패널 */}
+        {tableVisible && (
+          <div className="flex-[0_0_55%] min-h-0 border-t border-slate-700 overflow-hidden">
+            <TransactionTable
+              transactions={transactions}
+              totalCount={totalCount}
+              isLoading={isLoading || isRetrying}
+              isCollecting={isCollecting}
+              collectMsg={loadingMsg}
+              currentPage={filters.page ?? 1}
+              totalPages={totalPages}
+              onPageChange={(p) => setFilters({ page: p })}
+              onClose={() => setShowTable(false)}
+              onSort={handleSort}
+              sortCol={sortCol}
+              sortOrder={filters.order}
+            />
           </div>
-        )}
-
-        {/* 콜드 스타트 재시도 배너 */}
-        {isRetrying && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-amber-900/90 border border-amber-700 text-amber-200 text-xs px-5 py-3 rounded-xl shadow-2xl backdrop-blur-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-            </span>
-            {collectMsg}
-          </div>
-        )}
-
-        {(showTable || isLoading || isRetrying || collectMsg) && regionCode && (
-          <TransactionTable
-            transactions={transactions}
-            totalCount={totalCount}
-            isLoading={isLoading || isRetrying}
-            isCollecting={isCollecting}
-            collectMsg={loadingMsg}
-            currentPage={filters.page ?? 1}
-            totalPages={totalPages}
-            onPageChange={(p) => setFilters({ page: p })}
-            onClose={() => setShowTable(false)}
-            onSort={handleSort}
-            sortCol={sortCol}
-            sortOrder={filters.order}
-          />
-        )}
-
-        {!showTable && !isLoading && !isRetrying && !collectMsg && regionCode && (
-          <button
-            onClick={() => { setShowTable(true); fetchTransactions() }}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 border border-slate-600 text-slate-300 text-xs px-4 py-2 rounded-full shadow-lg hover:bg-slate-800 transition-colors backdrop-blur-sm"
-          >
-            실거래가 목록 보기 ({totalCount.toLocaleString()}건) ▲
-          </button>
         )}
       </div>
     </div>
