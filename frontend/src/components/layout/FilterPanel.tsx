@@ -58,11 +58,11 @@ export default function FilterPanel({ onClose, onApply }: FilterPanelProps) {
   }
 
   return (
-    <div className="absolute top-16 left-3 z-50 bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl border border-slate-200 p-5 w-80">
+    <div className="absolute top-16 left-3 z-50 bg-[#0d1526]/98 backdrop-blur-md shadow-2xl rounded-2xl border border-slate-700/60 p-5 w-80">
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-bold text-slate-800">필터</span>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <span className="text-sm font-bold text-slate-200">필터</span>
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -79,7 +79,7 @@ export default function FilterPanel({ onClose, onApply }: FilterPanelProps) {
               className={`py-2 text-xs font-semibold rounded-lg border transition-all ${
                 villaOn
                   ? 'bg-orange-500 border-orange-500 text-white'
-                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
+                  : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:border-slate-500'
               }`}
             >
               빌라 다세대
@@ -89,7 +89,7 @@ export default function FilterPanel({ onClose, onApply }: FilterPanelProps) {
               className={`py-2 text-xs font-semibold rounded-lg border transition-all ${
                 officetelOn
                   ? 'bg-violet-600 border-violet-600 text-white'
-                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:border-slate-300'
+                  : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:border-slate-500'
               }`}
             >
               주거 오피스텔
@@ -126,10 +126,10 @@ export default function FilterPanel({ onClose, onApply }: FilterPanelProps) {
       </div>
 
       {/* 버튼 */}
-      <div className="flex gap-2 mt-5 pt-4 border-t border-slate-100">
+      <div className="flex gap-2 mt-5 pt-4 border-t border-slate-700/60">
         <button
           onClick={handleReset}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-300 transition-colors"
         >
           <RotateCcw className="w-3 h-3" />
           초기화

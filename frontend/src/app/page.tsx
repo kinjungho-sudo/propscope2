@@ -223,8 +223,8 @@ export default function HomePage() {
       {/* 지역 미선택 안내 */}
       {!hasRegion && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-white/90 backdrop-blur-sm text-slate-600 text-sm px-8 py-5 rounded-2xl shadow-xl border border-slate-200">
-            <p className="font-bold text-base mb-1 text-slate-800">PropScope</p>
+          <div className="bg-[#0d1526]/90 backdrop-blur-sm text-slate-400 text-sm px-8 py-5 rounded-2xl shadow-xl border border-slate-700/60">
+            <p className="font-bold text-base mb-1 text-slate-200">PropScope</p>
             <p>상단 검색창에서 지역을 검색하세요</p>
           </div>
         </div>
