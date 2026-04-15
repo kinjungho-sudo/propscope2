@@ -83,6 +83,8 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
   // Recenter map when region changes
   useEffect(() => {
     if (!mapRef.current || !region) return
+    // lat/lng가 null이면 setCenter 건너뜀 (지도가 (0,0)으로 이동하는 버그 방지)
+    if (!region.lat || !region.lng) return
     const w = window as any
     const center = new w.kakao.maps.LatLng(region.lat, region.lng)
     mapRef.current.setCenter(center)

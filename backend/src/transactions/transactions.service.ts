@@ -14,6 +14,13 @@ export class TransactionsService {
     });
   }
 
+  /** 건물명을 해시해서 ±0.003도 범위의 결정적 오프셋 생성 (동일 건물 = 항상 같은 위치) */
+  private jitter(str: string, salt: number): number {
+    let h = salt;
+    for (const c of str) h = ((h * 31) + c.charCodeAt(0)) & 0x7fffffff;
+    return ((h % 600) - 300) / 100000; // ±0.003° ≈ ±300m
+  }
+
   async findAll(filters: TransactionFilterDto) {
     const {
       regionId,
@@ -68,20 +75,26 @@ export class TransactionsService {
     ]);
 
     return {
-      transactions: transactions.map((t) => ({
-        id: t.id,
-        buildingName: t.buildingName,
-        dealDate: format(t.dealDate, 'yyyy-MM-dd'),
-        dealAmount: t.dealAmount,
-        exclusiveArea: t.exclusiveArea,
-        pricePerPyeong: t.pricePerPyeong,
-        floor: t.floor,
-        buildYear: t.buildYear,
-        propertyType: t.propertyType,
-        address: t.jibunAddress || t.roadAddress || '',
-        lat: t.lat,
-        lng: t.lng,
-      })),
+      transactions: transactions.map((t) => {
+        // MOLIT API는 GPS 좌표를 제공하지 않아 t.lat/lng가 항상 null
+        // → region 좌표를 폴백으로 사용하고 건물명 해시로 위치를 분산
+        const lat = t.lat ?? (region.lat != null ? region.lat + this.jitter(t.buildingName, 1) : null);
+        const lng = t.lng ?? (region.lng != null ? region.lng + this.jitter(t.buildingName, 2) : null);
+        return {
+          id: t.id,
+          buildingName: t.buildingName,
+          dealDate: format(t.dealDate, 'yyyy-MM-dd'),
+          dealAmount: t.dealAmount,
+          exclusiveArea: t.exclusiveArea,
+          pricePerPyeong: t.pricePerPyeong,
+          floor: t.floor,
+          buildYear: t.buildYear,
+          propertyType: t.propertyType,
+          address: t.jibunAddress || t.roadAddress || '',
+          lat,
+          lng,
+        };
+      }),
       pagination: {
         page,
         limit,
