@@ -19,7 +19,7 @@ export default function RootLayout({
       <body>
         {kakaoKey && (
           <Script
-            src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`}
+            src={`//dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false&libraries=services`}
             strategy="afterInteractive"
           />
         )}

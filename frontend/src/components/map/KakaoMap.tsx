@@ -19,11 +19,20 @@ interface BubbleEntry {
   transactions: Transaction[]
 }
 
+/** 건물명 해시 기반 결정적 오프셋 (동일 건물 = 항상 같은 위치, ±300m) */
+function hashJitter(str: string, salt: number): number {
+  let h = salt
+  for (const c of str) h = ((h * 31) + c.charCodeAt(0)) & 0x7fffffff
+  return ((h % 600) - 300) / 100000
+}
+
 export default function KakaoMap({ region, transactions, hoveredTransactionId, onBubbleClick }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const bubblesRef = useRef<Map<string, BubbleEntry>>(new Map())
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  // geocoding으로 얻은 region 중심 좌표 (region.lat/lng가 null일 때 사용)
+  const [geoCenter, setGeoCenter] = useState<{ lat: number; lng: number } | null>(null)
 
   // Initialize map
   useEffect(() => {
@@ -64,7 +73,6 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
       }
     }
 
-    // 12초 안에 SDK 로드 안 되면 에러
     const timeout = setTimeout(() => {
       if (!settled) setStatus('error')
     }, 12000)
@@ -80,52 +88,80 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recenter map when region changes
+  // Region 변경 시 지도 이동
   useEffect(() => {
-    if (!mapRef.current || !region) return
-    // lat/lng가 null이면 setCenter 건너뜀 (지도가 (0,0)으로 이동하는 버그 방지)
-    if (!region.lat || !region.lng) return
+    if (!mapRef.current || !region || status !== 'ready') return
     const w = window as any
-    const center = new w.kakao.maps.LatLng(region.lat, region.lng)
-    mapRef.current.setCenter(center)
-    mapRef.current.setLevel(5)
-  }, [region])
 
-  // Rebuild bubble markers when transactions change
+    if (region.lat && region.lng) {
+      // DB에 좌표 있음 → 바로 이동
+      const center = new w.kakao.maps.LatLng(region.lat, region.lng)
+      mapRef.current.setCenter(center)
+      mapRef.current.setLevel(5)
+      setGeoCenter({ lat: region.lat, lng: region.lng })
+    } else if (w.kakao?.maps?.services) {
+      // DB에 좌표 없음 → 주소로 geocoding
+      const geocoder = new w.kakao.maps.services.Geocoder()
+      const address = `${region.sidoName} ${region.sigunguName} ${region.dongName}`
+      geocoder.addressSearch(address, (result: any[], stat: string) => {
+        if (stat === w.kakao.maps.services.Status.OK && result.length > 0) {
+          const lat = parseFloat(result[0].y)
+          const lng = parseFloat(result[0].x)
+          const center = new w.kakao.maps.LatLng(lat, lng)
+          mapRef.current?.setCenter(center)
+          mapRef.current?.setLevel(5)
+          setGeoCenter({ lat, lng })
+        }
+      })
+    }
+  }, [region, status])
+
+  // transactions 변경 시 버블 마커 재구성
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current) return
     const w = window as any
 
-    // Clear existing bubbles
-    bubblesRef.current.forEach(({ overlay }) => {
-      overlay.setMap(null)
-    })
+    // 기존 버블 제거
+    bubblesRef.current.forEach(({ overlay }) => overlay.setMap(null))
     bubblesRef.current.clear()
 
-    // Filter valid coordinates
-    const valid = transactions.filter(
-      (t) => t.lat && t.lng && !(t.lat === 0 && t.lng === 0),
-    )
+    // 유효 좌표 필터링 — geoCenter를 폴백으로 사용
+    const base = geoCenter
+    const valid = transactions
+      .map((t) => {
+        const rawLat = (t as any).lat as number | null
+        const rawLng = (t as any).lng as number | null
+        if (rawLat && rawLng && !(rawLat === 0 && rawLng === 0)) {
+          return { ...t, lat: rawLat, lng: rawLng }
+        }
+        if (base) {
+          return {
+            ...t,
+            lat: base.lat + hashJitter(t.buildingName, 1),
+            lng: base.lng + hashJitter(t.buildingName, 2),
+          }
+        }
+        return null
+      })
+      .filter((t): t is Transaction & { lat: number; lng: number } => t !== null)
 
-    // Group by building name (same building => one bubble)
-    const grouped = new Map<string, Transaction[]>()
+    // 건물별 그룹핑
+    const grouped = new Map<string, (Transaction & { lat: number; lng: number })[]>()
     valid.forEach((t) => {
       const key = `${t.buildingName}||${t.address}`
       if (!grouped.has(key)) grouped.set(key, [])
       grouped.get(key)!.push(t)
     })
 
-    grouped.forEach((txs, key) => {
-      // Sort by date desc, take the most recent for display
+    grouped.forEach((txs) => {
       const sorted = [...txs].sort((a, b) => b.dealDate.localeCompare(a.dealDate))
-      const representative = sorted[0]
+      const rep = sorted[0]
+      const position = new w.kakao.maps.LatLng(rep.lat, rep.lng)
 
-      const position = new w.kakao.maps.LatLng(representative.lat, representative.lng)
-
-      const isOfficetel = representative.propertyType === 'officetel'
+      const isOfficetel = rep.propertyType === 'officetel'
       const bgColor = isOfficetel ? '#7c3aed' : '#f97316'
-      const priceText = formatPrice(representative.dealAmount)
-      const areaText = `${representative.exclusiveArea}㎡`
+      const priceText = formatPrice(rep.dealAmount)
+      const areaText = `${rep.exclusiveArea}㎡`
 
       const bubbleEl = document.createElement('div')
       bubbleEl.style.cssText = [
@@ -166,12 +202,12 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
         yAnchor: 1.3,
       })
 
-      bubblesRef.current.set(key, { overlay, transactions: sorted })
+      bubblesRef.current.set(`${rep.buildingName}||${rep.address}`, { overlay, transactions: sorted })
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, status])
+  }, [transactions, status, geoCenter])
 
-  // hoveredTransactionId — no-op kept for interface compatibility
+  // hoveredTransactionId — 인터페이스 호환용
   useEffect(() => {
     if (status !== 'ready' || hoveredTransactionId === null) return
   }, [hoveredTransactionId, status])
@@ -204,7 +240,6 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId, o
           >
             페이지 새로고침
           </button>
-          <span className="text-xs text-slate-600 mt-3">조회 결과 목록은 지도 없이도 정상 사용 가능합니다.</span>
         </div>
       )}
     </div>
