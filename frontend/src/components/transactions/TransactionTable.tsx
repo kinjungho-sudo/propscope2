@@ -17,6 +17,7 @@ interface TransactionTableProps {
   onSort: (col: string) => void
   sortCol: string
   sortOrder: 'asc' | 'desc'
+  onRowClick?: (tx: Transaction) => void
 }
 
 const COLS = [
@@ -33,7 +34,7 @@ const COLS = [
 
 export default function TransactionTable({
   transactions, totalCount, isLoading, isCollecting, collectMsg,
-  currentPage, totalPages, onPageChange, onClose, onSort, sortCol, sortOrder,
+  currentPage, totalPages, onPageChange, onClose, onSort, sortCol, sortOrder, onRowClick,
 }: TransactionTableProps) {
   const pageWindow = Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
     const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4))
@@ -87,7 +88,9 @@ export default function TransactionTable({
             </thead>
             <tbody className="divide-y divide-slate-800">
               {transactions.map((t, i) => (
-                <tr key={t.id} className={`hover:bg-slate-800/60 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-800/20'}`}>
+                <tr key={t.id}
+                  onClick={() => onRowClick?.(t)}
+                  className={`hover:bg-blue-900/20 transition-colors cursor-pointer ${i % 2 === 0 ? '' : 'bg-slate-800/20'}`}>
                   <td className="px-3 py-2 text-slate-200 font-medium truncate max-w-[144px]">{t.buildingName}</td>
                   <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
                     {t.exclusiveArea}㎡<span className="text-slate-500 ml-1">({(t.exclusiveArea / 3.3058).toFixed(1)}평)</span>

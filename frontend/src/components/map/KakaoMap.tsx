@@ -11,14 +11,16 @@ interface KakaoMapProps {
   region: Region | null
   transactions: Transaction[]
   hoveredTransactionId: string | null
+  onTransactionClick?: (tx: Transaction) => void
 }
 
 interface MarkerEntry {
   marker: any
-  overlay: any
+  overlay: any       // detail overlay (click)
+  labelOverlay?: any // price label (always visible)
 }
 
-export default function KakaoMap({ region, transactions, hoveredTransactionId }: KakaoMapProps) {
+export default function KakaoMap({ region, transactions, hoveredTransactionId, onTransactionClick }: KakaoMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<Map<string, MarkerEntry>>(new Map())
@@ -76,9 +78,10 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId }:
     const w = window as any
 
     // Clear existing markers
-    markersRef.current.forEach(({ marker, overlay }) => {
+    markersRef.current.forEach(({ marker, overlay, labelOverlay }) => {
       marker.setMap(null)
       overlay.setMap(null)
+      labelOverlay?.setMap(null)
     })
     markersRef.current.clear()
 
@@ -92,42 +95,76 @@ export default function KakaoMap({ region, transactions, hoveredTransactionId }:
 
       const marker = new w.kakao.maps.Marker({ position, map: mapRef.current })
 
-      // Popup overlay (hidden by default)
-      const el = document.createElement('div')
-      el.style.cssText = [
-        'background:white',
-        'border:1.5px solid #e5e7eb',
-        'border-radius:8px',
-        'padding:8px 12px',
-        'font-size:12px',
+      // 항상 표시되는 가격 라벨 (마커 위)
+      const labelEl = document.createElement('div')
+      labelEl.style.cssText = [
+        'background:rgba(15,23,42,0.88)',
+        'border:1px solid rgba(99,102,241,0.5)',
+        'border-radius:6px',
+        'padding:3px 7px',
+        'font-size:11px',
+        'font-weight:600',
         'white-space:nowrap',
-        'box-shadow:0 2px 8px rgba(0,0,0,0.15)',
-        'transform:translateY(calc(-100% - 16px))',
+        'color:#e2e8f0',
+        'transform:translateY(calc(-100% - 38px))',
         'pointer-events:none',
-        'line-height:1.5',
+        'line-height:1.4',
+        'backdrop-filter:blur(4px)',
       ].join(';')
-      el.innerHTML = `
-        <div style="font-weight:600;color:#111827">${t.buildingName}</div>
-        <div style="color:#6b7280;margin-top:2px">${formatPrice(t.dealAmount)} · ${t.floor}층</div>
-      `
+      labelEl.textContent = formatPrice(t.dealAmount)
 
-      const overlay = new w.kakao.maps.CustomOverlay({
+      const labelOverlay = new w.kakao.maps.CustomOverlay({
         position,
-        content: el,
-        map: null,
-        zIndex: 3,
+        content: labelEl,
+        map: mapRef.current,
+        zIndex: 2,
       })
 
-      w.kakao.maps.event.addListener(marker, 'mouseover', () => overlay.setMap(mapRef.current))
-      w.kakao.maps.event.addListener(marker, 'mouseout', () => overlay.setMap(null))
+      // 클릭 시 상세 팝업 (더 큰 정보)
+      const detailEl = document.createElement('div')
+      detailEl.style.cssText = [
+        'background:rgba(15,23,42,0.95)',
+        'border:1.5px solid rgba(59,130,246,0.6)',
+        'border-radius:10px',
+        'padding:10px 14px',
+        'font-size:12px',
+        'white-space:nowrap',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.4)',
+        'transform:translateY(calc(-100% - 38px))',
+        'pointer-events:none',
+        'line-height:1.6',
+        'color:#f1f5f9',
+      ].join(';')
+      detailEl.innerHTML = `
+        <div style="font-weight:700;color:#fff;margin-bottom:3px">${t.buildingName}</div>
+        <div style="color:#94a3b8;font-size:11px">${t.address}</div>
+        <div style="margin-top:5px;display:flex;gap:12px">
+          <div><span style="color:#60a5fa;font-weight:600">${formatPrice(t.dealAmount)}</span><span style="color:#64748b;font-size:10px;margin-left:3px">${t.floor}층</span></div>
+          <div style="color:#94a3b8;font-size:11px">${(t.exclusiveArea / 3.3058).toFixed(1)}평 · ${t.buildYear}년</div>
+        </div>
+      `
 
-      markersRef.current.set(t.id, { marker, overlay })
+      const detailOverlay = new w.kakao.maps.CustomOverlay({
+        position,
+        content: detailEl,
+        map: null,
+        zIndex: 5,
+      })
+
+      w.kakao.maps.event.addListener(marker, 'click', () => {
+        // 다른 모든 detail 닫기
+        markersRef.current.forEach(({ overlay }) => overlay.setMap(null))
+        detailOverlay.setMap(mapRef.current)
+        if (onTransactionClick) onTransactionClick(t)
+      })
+
+      markersRef.current.set(t.id, { marker, overlay: detailOverlay, labelOverlay })
     })
   }, [transactions, status])
 
-  // Highlight marker when list item is hovered
+  // Highlight marker when list item is hovered (no-op when null)
   useEffect(() => {
-    if (status !== 'ready') return
+    if (status !== 'ready' || hoveredTransactionId === null) return
     markersRef.current.forEach(({ overlay }, id) => {
       overlay.setMap(id === hoveredTransactionId ? mapRef.current : null)
     })
