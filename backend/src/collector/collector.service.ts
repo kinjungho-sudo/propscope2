@@ -184,6 +184,56 @@ export class CollectorService {
   }
 
   /**
+   * Kakao REST API로 null 좌표 region 일괄 지오코딩
+   * KAKAO_REST_API_KEY 환경변수 필요
+   */
+  async geocodeNullRegions(sidoFilter?: string): Promise<{ updated: number; failed: number; skipped: number }> {
+    const restKey = process.env.KAKAO_REST_API_KEY;
+    if (!restKey) throw new Error('KAKAO_REST_API_KEY 환경변수가 설정되지 않았습니다.');
+
+    const regions = await this.prisma.region.findMany({
+      where: {
+        lat: null,
+        ...(sidoFilter ? { sidoName: { contains: sidoFilter } } : {}),
+      },
+    });
+
+    this.logger.log(`[지오코딩] 대상 지역 ${regions.length}개`);
+    let updated = 0, failed = 0, skipped = 0;
+
+    for (const region of regions) {
+      const address = `${region.sidoName} ${region.sigunguName} ${region.dongName}`;
+      try {
+        const res = await fetch(
+          `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(address)}`,
+          { headers: { Authorization: `KakaoAK ${restKey}` } },
+        );
+        const json = await res.json() as any;
+        const doc = json?.documents?.[0];
+        if (!doc) { skipped++; continue; }
+
+        const lat = parseFloat(doc.y);
+        const lng = parseFloat(doc.x);
+        if (!lat || !lng) { skipped++; continue; }
+
+        await this.prisma.region.update({
+          where: { id: region.id },
+          data: { lat, lng },
+        });
+        updated++;
+        this.logger.log(`[지오코딩] ${address} → (${lat}, ${lng})`);
+      } catch (e) {
+        this.logger.warn(`[지오코딩 실패] ${address}: ${(e as Error).message}`);
+        failed++;
+      }
+      // Rate limit 방지 (Kakao 최대 10QPS)
+      await new Promise(r => setTimeout(r, 120));
+    }
+
+    return { updated, failed, skipped };
+  }
+
+  /**
    * 인천광역시 전체 구/군 시딩 + 트랜잭션 수집
    * MOLIT API에서 동 목록 발견 → regions 자동 생성 → real_transactions 저장
    */

@@ -24,9 +24,21 @@ export class CollectorController {
   }
 
   @Post('seed-incheon')
-  @ApiOperation({ summary: '인천광역시 전체 동 시딩 + 트랜잭션 수집 (1회성)' })
+  @ApiOperation({ summary: '인천광역시 전체 동 시딩 + 트랜잭션 수집 (months 기본 12, 최대 36)' })
   async seedIncheon(@Body() body: { months?: number }) {
     return this.collector.seedIncheon(body?.months ?? 12);
+  }
+
+  @Post('geocode-regions')
+  @ApiOperation({ summary: 'null 좌표 지역 Kakao REST API 일괄 지오코딩 (KAKAO_REST_API_KEY 필요)' })
+  @ApiBody({
+    schema: {
+      example: { sidoFilter: '인천' },
+      properties: { sidoFilter: { type: 'string', description: '시/도 이름 필터 (없으면 전체)' } },
+    },
+  })
+  async geocodeRegions(@Body() body: { sidoFilter?: string }) {
+    return this.collector.geocodeNullRegions(body?.sidoFilter);
   }
 
   @Post('collect-recent')
